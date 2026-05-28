@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
         "--metrics-output",
         default=str(Path("outputs/metrics.csv")),
     )
-    parser.add_argument("--cv-splits", type=int, default=4)
+    parser.add_argument("--cv-splits", type=int, default=5)
     parser.add_argument("--test-area-frac", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--max-train-samples", type=int, default=20000)
@@ -39,13 +39,14 @@ def main() -> None:
     df = pd.read_csv(args.data, parse_dates=["date"])
 
     areas_gdf = gpd.read_file(args.areas)
-    areas_gdf = areas_gdf.to_crs("EPSG:4326")
-    areas_gdf["centroid"] = areas_gdf.geometry.centroid
-    areas_gdf["lon"] = areas_gdf["centroid"].x
-    areas_gdf["lat"] = areas_gdf["centroid"].y
+    areas_proj = areas_gdf.to_crs("EPSG:26916")
+    areas_proj["centroid"] = areas_proj.geometry.centroid
+    areas_centroids = areas_proj.set_geometry("centroid").to_crs("EPSG:4326")
+    areas_centroids["lon"] = areas_centroids.geometry.x
+    areas_centroids["lat"] = areas_centroids.geometry.y
 
     df = df.merge(
-        areas_gdf[["community_area_id", "lon", "lat"]],
+        areas_centroids[["community_area_id", "lon", "lat"]],
         on="community_area_id",
         how="left",
     )

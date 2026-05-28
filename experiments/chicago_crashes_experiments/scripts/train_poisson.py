@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import PoissonRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-from xgboost import XGBRegressor
 
 from common import append_metrics, ensure_features, spatiotemporal_folds
 
@@ -27,7 +27,7 @@ FEATURE_COLS = [
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train XGBoost baseline.")
+    parser = argparse.ArgumentParser(description="Train Poisson regression baseline.")
     parser.add_argument(
         "--data",
         default=str(Path("data/processed/daily_area.csv")),
@@ -39,6 +39,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cv-splits", type=int, default=5)
     parser.add_argument("--test-area-frac", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--max-iter", type=int, default=300)
+    parser.add_argument("--alpha", type=float, default=1.0)
     return parser.parse_args()
 
 
@@ -68,24 +70,17 @@ def main() -> None:
         X_test = X.loc[test_idx]
         y_test = y[test_idx]
 
-        model = XGBRegressor(
-            objective="count:poisson",
-            n_estimators=300,
-            learning_rate=0.05,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            random_state=args.random_state,
-            n_jobs=-1,
+        model = PoissonRegressor(
+            alpha=args.alpha,
+            max_iter=args.max_iter,
         )
-
         model.fit(X_train, y_train)
         preds = model.predict(X_test)
 
         mae = mean_absolute_error(y_test, preds)
         rmse = np.sqrt(mean_squared_error(y_test, preds))
         row = {
-            "model": "xgboost",
+            "model": "poisson",
             "split": "spatiotemporal_cv",
             "fold": fold["fold"],
             "mae": mae,
@@ -101,7 +96,7 @@ def main() -> None:
     append_metrics(
         Path(args.metrics_output),
         {
-            "model": "xgboost",
+            "model": "poisson",
             "split": "spatiotemporal_cv_mean",
             "fold": "mean",
             "mae": mean_mae,

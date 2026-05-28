@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
         "--metrics-output",
         default=str(Path("outputs/metrics.csv")),
     )
-    parser.add_argument("--cv-splits", type=int, default=4)
+    parser.add_argument("--cv-splits", type=int, default=5)
     parser.add_argument("--test-area-frac", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=30)

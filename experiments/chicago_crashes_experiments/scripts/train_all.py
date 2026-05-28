@@ -11,7 +11,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data", default=str(Path("data/processed/daily_area.csv")))
     parser.add_argument("--areas", default=str(Path("data/processed/community_areas.geojson")))
     parser.add_argument("--metrics-output", default=str(Path("outputs/metrics.csv")))
-    parser.add_argument("--cv-splits", type=int, default=4)
+    parser.add_argument("--cv-splits", type=int, default=5)
     parser.add_argument("--test-area-frac", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--georegression-models", default="strf,stst,gwr")
@@ -45,17 +45,6 @@ def main() -> None:
 
     run_script(
         [
-            "scripts/train_georegression.py",
-            *shared,
-            "--areas",
-            args.areas,
-            "--models",
-            args.georegression_models,
-        ]
-    )
-
-    run_script(
-        [
             "scripts/train_kriging.py",
             *shared,
             "--areas",
@@ -64,6 +53,8 @@ def main() -> None:
             str(args.kriging_max_train_samples),
         ]
     )
+
+    run_script(["scripts/train_poisson.py", *shared])
 
     run_script(
         [
@@ -77,6 +68,17 @@ def main() -> None:
             str(args.graph_hidden_dim),
             "--learning-rate",
             str(args.graph_learning_rate),
+        ]
+    )
+
+    run_script(
+        [
+            "scripts/train_georegression.py",
+            *shared,
+            "--areas",
+            args.areas,
+            "--models",
+            args.georegression_models,
         ]
     )
 

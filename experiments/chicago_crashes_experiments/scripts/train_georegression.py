@@ -45,11 +45,11 @@ def parse_args() -> argparse.Namespace:
         "--metrics-output",
         default=str(Path("outputs/metrics.csv")),
     )
-    parser.add_argument("--cv-splits", type=int, default=4)
+    parser.add_argument("--cv-splits", type=int, default=5)
     parser.add_argument("--test-area-frac", type=float, default=0.2)
     parser.add_argument("--random-state", type=int, default=42)
     parser.add_argument("--neighbour-count", type=float, default=0.3)
-    parser.add_argument("--kernel-type", default="bisquare")
+    parser.add_argument("--kernel-type", default="gaussian")
     parser.add_argument(
         "--models",
         default="strf,stst,gwr",
@@ -60,13 +60,14 @@ def parse_args() -> argparse.Namespace:
 
 def build_spatiotemporal_arrays(df: pd.DataFrame, areas_path: str):
     areas = gpd.read_file(areas_path)
-    areas = areas.to_crs("EPSG:4326")
-    areas["centroid"] = areas.geometry.centroid
-    areas["lon"] = areas["centroid"].x
-    areas["lat"] = areas["centroid"].y
+    areas_proj = areas.to_crs("EPSG:26916")
+    areas_proj["centroid"] = areas_proj.geometry.centroid
+    areas_centroids = areas_proj.set_geometry("centroid").to_crs("EPSG:4326")
+    areas_centroids["lon"] = areas_centroids.geometry.x
+    areas_centroids["lat"] = areas_centroids.geometry.y
 
     df = df.merge(
-        areas[["community_area_id", "lon", "lat"]],
+        areas_centroids[["community_area_id", "lon", "lat"]],
         on="community_area_id",
         how="left",
     )
@@ -80,7 +81,8 @@ def build_spatiotemporal_arrays(df: pd.DataFrame, areas_path: str):
     times = (df["date"] - t0).dt.days.to_numpy().reshape(-1, 1)
 
     X_plus = np.concatenate([X, points, times], axis=1)
-    return X_plus, points, times
+    coords = np.concatenate([points, times], axis=1)
+    return X_plus, coords
 
 
 def evaluate_model(model_name: str, y_true: np.ndarray, y_pred: np.ndarray):
@@ -94,7 +96,7 @@ def main() -> None:
     df = pd.read_csv(args.data, parse_dates=["date"])
     df = ensure_features(df)
 
-    X_plus, points, times = build_spatiotemporal_arrays(df, args.areas)
+    X_plus, coords = build_spatiotemporal_arrays(df, args.areas)
     y = df["n_crashes"].to_numpy()
 
     models = {m.strip().lower() for m in args.models.split(",") if m.strip()}
@@ -131,27 +133,23 @@ def main() -> None:
 
             X_train = X_plus[train_idx]
             y_train = y[train_idx]
-            points_train = points[train_idx]
-            times_train = times[train_idx]
+            coords_train = coords[train_idx]
 
             X_test = X_plus[test_idx]
             y_test = y[test_idx]
-            points_test = points[test_idx]
-            times_test = times[test_idx]
+            coords_test = coords[test_idx]
 
             model = WeightModel(
                 RandomForestRegressor(n_estimators=200, random_state=args.random_state),
-                distance_measure=["euclidean", "euclidean"],
-                kernel_type=[args.kernel_type, args.kernel_type],
+                distance_measure="euclidean",
+                kernel_type=args.kernel_type,
                 neighbour_count=args.neighbour_count,
+                cache_data=True,
             )
-            model.fit(X_train, y_train, [points_train, times_train])
+            model.fit(X_train, y_train, [coords_train])
             preds = model.predict_by_fit(
-                X_train,
-                y_train,
-                [points_train, times_train],
                 X_test,
-                [points_test, times_test],
+                [coords_test],
             )
             metrics = evaluate_model("strf", y_test, preds)
             metrics.update(
@@ -174,28 +172,24 @@ def main() -> None:
 
             X_train = X_plus[train_idx]
             y_train = y[train_idx]
-            points_train = points[train_idx]
-            times_train = times[train_idx]
+            coords_train = coords[train_idx]
 
             X_test = X_plus[test_idx]
             y_test = y[test_idx]
-            points_test = points[test_idx]
-            times_test = times[test_idx]
+            coords_test = coords[test_idx]
 
             model = StackingWeightModel(
                 DecisionTreeRegressor(splitter="random", max_depth=X_train.shape[1]),
-                distance_measure=["euclidean", "euclidean"],
-                kernel_type=[args.kernel_type, args.kernel_type],
+                distance_measure="euclidean",
+                kernel_type=args.kernel_type,
                 neighbour_count=args.neighbour_count,
                 neighbour_leave_out_rate=0.1,
+                cache_data=True,
             )
-            model.fit(X_train, y_train, [points_train, times_train])
+            model.fit(X_train, y_train, [coords_train])
             preds = model.predict_by_fit(
-                X_train,
-                y_train,
-                [points_train, times_train],
                 X_test,
-                [points_test, times_test],
+                [coords_test],
             )
             metrics = evaluate_model("stst", y_test, preds)
             metrics.update(
@@ -218,27 +212,23 @@ def main() -> None:
 
             X_train = X_plus[train_idx]
             y_train = y[train_idx]
-            points_train = points[train_idx]
-            times_train = times[train_idx]
+            coords_train = coords[train_idx]
 
             X_test = X_plus[test_idx]
             y_test = y[test_idx]
-            points_test = points[test_idx]
-            times_test = times[test_idx]
+            coords_test = coords[test_idx]
 
             model = WeightModel(
                 LinearRegression(),
-                distance_measure=["euclidean", "euclidean"],
-                kernel_type=[args.kernel_type, args.kernel_type],
+                distance_measure="euclidean",
+                kernel_type=args.kernel_type,
                 neighbour_count=args.neighbour_count,
+                cache_data=True,
             )
-            model.fit(X_train, y_train, [points_train, times_train])
+            model.fit(X_train, y_train, [coords_train])
             preds = model.predict_by_fit(
-                X_train,
-                y_train,
-                [points_train, times_train],
                 X_test,
-                [points_test, times_test],
+                [coords_test],
             )
             metrics = evaluate_model("gwr", y_test, preds)
             metrics.update(
